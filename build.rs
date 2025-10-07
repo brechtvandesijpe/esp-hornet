@@ -1,7 +1,43 @@
 fn main() {
+    // Keep helpful error handling wiring (unchanged)
     linker_be_nice();
-    // make sure linkall.x is the last linker script (otherwise might cause problems with flip-link)
+
+    // Keep the linker script arg
     println!("cargo:rustc-link-arg=-Tlinkall.x");
+
+    if let Ok(libdir) = std::env::var("LIBBTDM_DIR") {
+        // find the libbtdm*.a file in the dir
+        let libfile = std::fs::read_dir(&libdir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .find_map(|entry| {
+                let fname = entry.file_name().into_string().ok()?;
+                if fname.starts_with("libbtdm") && fname.ends_with(".a") {
+                    Some(fname)
+                } else {
+                    None
+                }
+            })
+            .expect("no libbtdm*.a found in LIBBTDM_DIR");
+
+        println!("cargo:warning=Using btdm archive: {} in {}", libfile, libdir);
+        // add search path
+        println!("cargo:rustc-link-search=native={}", libdir);
+
+        // Force inclusion of all objects from the archive by filename.
+        // Use -l:libname.a so we reference the exact file; wrap with whole-archive.
+        println!("cargo:rustc-link-arg=-Wl,--whole-archive");
+        println!("cargo:rustc-link-arg=-l:{}", libfile);
+        println!("cargo:rustc-link-arg=-Wl,--no-whole-archive");
+    } else {
+        println!("cargo:warning=LIBBTDM_DIR not set; set it to the directory containing libbtdm*.a");
+    }
+
+    // Provide error-handling script arg (keeps helpful diagnostics)
+    println!(
+        "cargo:rustc-link-arg=-Wl,--error-handling-script={}",
+        std::env::current_exe().unwrap().display()
+    );
 }
 
 fn linker_be_nice() {
@@ -36,7 +72,6 @@ fn linker_be_nice() {
                 }
                 _ => (),
             },
-            // we don't have anything helpful for "missing-lib" yet
             _ => {
                 std::process::exit(1);
             }
