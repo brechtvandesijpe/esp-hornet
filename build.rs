@@ -1,39 +1,77 @@
 fn main() {
-    // Keep helpful error handling wiring (unchanged)
     linker_be_nice();
 
-    // Keep the linker script arg
+    // keep the expected linker script arg
     println!("cargo:rustc-link-arg=-Tlinkall.x");
 
-    if let Ok(libdir) = std::env::var("LIBBTDM_DIR") {
-        // find the libbtdm*.a file in the dir
-        let libfile = std::fs::read_dir(&libdir)
-            .unwrap()
-            .filter_map(|e| e.ok())
-            .find_map(|entry| {
-                let fname = entry.file_name().into_string().ok()?;
-                if fname.starts_with("libbtdm") && fname.ends_with(".a") {
-                    Some(fname)
-                } else {
-                    None
-                }
-            })
-            .expect("no libbtdm*.a found in LIBBTDM_DIR");
+    // Try to auto-detect the libbtdm*.a for the current target/profile
+    let target = std::env::var("TARGET").unwrap_or_else(|_| "xtensa-esp32-none-elf".into());
+    let profile = std::env::var("PROFILE").unwrap_or_else(|_| "release".into());
+    let target_dir = std::env::var("CARGO_TARGET_DIR").unwrap_or_else(|_| "target".into());
 
+    let mut found: Option<(String, String)> = None;
+
+    // search under: <target_dir>/<target>/<profile>/build/*/out
+    let search_base = std::path::Path::new(&target_dir)
+        .join(&target)
+        .join(&profile)
+        .join("build");
+
+    if let Ok(rd) = std::fs::read_dir(&search_base) {
+        for entry in rd.filter_map(|e| e.ok()) {
+            let out_dir = entry.path().join("out");
+            if out_dir.is_dir() {
+                if let Ok(out_rd) = std::fs::read_dir(&out_dir) {
+                    if let Some(file) = out_rd
+                        .filter_map(|e| e.ok())
+                        .find_map(|ent| {
+                            let f = ent.file_name().into_string().ok()?;
+                            if f.starts_with("libbtdm") && f.ends_with(".a") {
+                                Some(f)
+                            } else {
+                                None
+                            }
+                        })
+                    {
+                        found = Some((out_dir.display().to_string(), file));
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    // fallback to LIBBTDM_DIR env if auto-detect failed
+    if found.is_none() {
+        if let Ok(libdir) = std::env::var("LIBBTDM_DIR") {
+            if let Ok(rd) = std::fs::read_dir(&libdir) {
+                if let Some(file) = rd.filter_map(|e| e.ok()).find_map(|ent| {
+                    let f = ent.file_name().into_string().ok()?;
+                    if f.starts_with("libbtdm") && f.ends_with(".a") {
+                        Some(f)
+                    } else {
+                        None
+                    }
+                }) {
+                    found = Some((libdir, file));
+                }
+            }
+        }
+    }
+
+    if let Some((libdir, libfile)) = found {
         println!("cargo:warning=Using btdm archive: {} in {}", libfile, libdir);
-        // add search path
         println!("cargo:rustc-link-search=native={}", libdir);
 
-        // Force inclusion of all objects from the archive by filename.
-        // Use -l:libname.a so we reference the exact file; wrap with whole-archive.
+        // force inclusion of all objects from the archive by filename
         println!("cargo:rustc-link-arg=-Wl,--whole-archive");
         println!("cargo:rustc-link-arg=-l:{}", libfile);
         println!("cargo:rustc-link-arg=-Wl,--no-whole-archive");
     } else {
-        println!("cargo:warning=LIBBTDM_DIR not set; set it to the directory containing libbtdm*.a");
+        println!("cargo:warning=Could not find libbtdm*.a automatically; set LIBBTDM_DIR to the directory containing libbtdm*.a");
     }
 
-    // Provide error-handling script arg (keeps helpful diagnostics)
+    // keep helpful error handling wiring
     println!(
         "cargo:rustc-link-arg=-Wl,--error-handling-script={}",
         std::env::current_exe().unwrap().display()
@@ -43,43 +81,11 @@ fn main() {
 fn linker_be_nice() {
     let args: Vec<String> = std::env::args().collect();
     if args.len() > 1 {
-        let kind = &args[1];
-        let what = &args[2];
-
-        match kind.as_str() {
-            "undefined-symbol" => match what.as_str() {
-                "_defmt_timestamp" => {
-                    eprintln!();
-                    eprintln!("💡 `defmt` not found - make sure `defmt.x` is added as a linker script and you have included `use defmt_rtt as _;`");
-                    eprintln!();
-                }
-                "_stack_start" => {
-                    eprintln!();
-                    eprintln!("💡 Is the linker script `linkall.x` missing?");
-                    eprintln!();
-                }
-                "esp_wifi_preempt_enable"
-                | "esp_wifi_preempt_yield_task"
-                | "esp_wifi_preempt_task_create" => {
-                    eprintln!();
-                    eprintln!("💡 `esp-wifi` has no scheduler enabled. Make sure you have the `builtin-scheduler` feature enabled, or that you provide an external scheduler.");
-                    eprintln!();
-                }
-                "embedded_test_linker_file_not_added_to_rustflags" => {
-                    eprintln!();
-                    eprintln!("💡 `embedded-test` not found - make sure `embedded-test.x` is added as a linker script for tests");
-                    eprintln!();
-                }
-                _ => (),
-            },
-            _ => {
-                std::process::exit(1);
-            }
-        }
-
+        // diagnostic helper invoked by the linker -- leave as no-op for normal builds
         std::process::exit(0);
     }
 
+    // keep the diagnostic script wiring
     println!(
         "cargo:rustc-link-arg=-Wl,--error-handling-script={}",
         std::env::current_exe().unwrap().display()
