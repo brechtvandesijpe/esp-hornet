@@ -21,11 +21,13 @@ use esp_backtrace as _;
 use esp_hal::{clock::CpuClock, main, rng::Rng, timer::timg::TimerGroup};
 use esp_println::println;
 use esp_wifi::{init, wifi};
-use ieee80211::{match_frames, mgmt_frame::BeaconFrame};
+
 
 esp_bootloader_esp_idf::esp_app_desc!();
 
-static KNOWN_SSIDS: Mutex<RefCell<BTreeSet<String>>> = Mutex::new(RefCell::new(BTreeSet::new()));
+// static KNOWN_SSIDS: Mutex<RefCell<BTreeSet<String>>> = Mutex::new(RefCell::new(BTreeSet::new()));
+
+mod sting;
 
 #[main]
 fn main() -> ! {
@@ -37,30 +39,9 @@ fn main() -> ! {
 
     let timg0 = TimerGroup::new(peripherals.TIMG0);
     let esp_wifi_ctrl = init(timg0.timer0, Rng::new(peripherals.RNG)).unwrap();
+    let (mut wifi_controller, mut interfaces) = esp_wifi::wifi::new(&esp_wifi_ctrl, peripherals.WIFI).unwrap();
 
-    // We must initialize some kind of interface and start it.
-    let (mut controller, interfaces) = esp_wifi::wifi::new(&esp_wifi_ctrl, peripherals.WIFI).unwrap();
-
-    controller.set_mode(wifi::WifiMode::Sta).unwrap();
-    controller.start().unwrap();
-
-    let mut sniffer = interfaces.sniffer;
-    sniffer.set_promiscuous_mode(true).unwrap();
-    sniffer.set_receive_cb(|packet| {
-        let _ = match_frames! {
-            packet.data,
-            beacon = BeaconFrame => {
-                let Some(ssid) = beacon.ssid() else {
-                    return;
-                };
-                if critical_section::with(|cs| {
-                    KNOWN_SSIDS.borrow_ref_mut(cs).insert(ssid.to_string())
-                }) {
-                    println!("Found new AP with SSID: {ssid}");
-                }
-            }
-        };
-    });
+    let _sting_guard = sting::init_sting(wifi_controller, interfaces);
 
     loop {}
 }

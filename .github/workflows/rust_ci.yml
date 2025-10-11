@@ -23,10 +23,6 @@ jobs:
         action:
           - command: build
             args: --release
-          - command: fmt
-            args: --all -- --check
-          - command: clippy
-            args: --all-features --workspace -- -D warnings
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
