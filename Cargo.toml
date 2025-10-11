@@ -57,6 +57,9 @@ smoltcp = { version = "0.12.0", default-features = false, features = [
   "socket-udp",
 ] }
 ieee80211 = { version = "0.5.9", default-features = false }
+embassy-time = "0.5.0"
+esp-hal-embassy = { version = "0.9.0", features = ["esp32"] }
+embassy-executor = "0.7.0"
 
 [profile.dev]
 # Rust debug is too slow.

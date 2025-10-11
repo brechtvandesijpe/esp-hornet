@@ -1,10 +1,13 @@
 use esp_println::println;
+use log::info;
 use alloc::{collections::btree_set::BTreeSet, string::{String, ToString}};
 use core::cell::RefCell;
-use core::marker::PhantomData;
 use critical_section::Mutex;
 use esp_wifi::{init, wifi};
 use ieee80211::{match_frames, mgmt_frame::{BeaconFrame, body::HasElements}};
+use esp_hornet::{flog, declare_feature_tag};
+
+declare_feature_tag!("Sting");
 
 #[cfg(feature = "sting")]
 static KNOWN_SSIDS: Mutex<RefCell<BTreeSet<String>>> = Mutex::new(RefCell::new(BTreeSet::new()));
@@ -86,8 +89,14 @@ impl<'a> Drop for StingGuard<'a> {
 }
 
 impl<'a> StingGuard<'a> {
-    pub fn start_sniff(&mut self) {
+    pub async fn start_sniff(&mut self) {
+        flog!(info, "Start sniffing");
         let _ = self.interfaces.sniffer.set_promiscuous_mode(true);
+    }
+
+    pub async fn stop_sniff(&mut self) {
+        flog!(info, "Stop sniffing");
+        let _ = self.interfaces.sniffer.set_promiscuous_mode(false);
     }
 }
 
@@ -96,7 +105,7 @@ pub fn init_sting<'a>(
     mut wifi_controller: wifi::WifiController<'a>,
     mut interfaces: wifi::Interfaces<'a>,
 ) -> StingGuard<'a> {
-    crate::logger::println!("Sting: ENABLED");
+    flog!(info, "ENABLED");
     wifi_controller.set_mode(wifi::WifiMode::Sta).unwrap();
     wifi_controller.start().unwrap();
 
@@ -111,7 +120,7 @@ pub fn init_sting<'a>(
                 if critical_section::with(|cs| {
                     KNOWN_SSIDS.borrow_ref_mut(cs).insert(ssid.to_string())
                 }) {
-                    println!("Network: {ssid} ({handshake})");
+                    flog!(info, "Found network: {} ({})", ssid, handshake);
                 }
             }
         };
@@ -125,5 +134,6 @@ pub fn init_sting<'a>(
 
 #[cfg(not(feature = "sting"))]
 pub fn init_sting<'a, A, B>(_a: A, _b: B) -> StingGuard<'a> {
+    flog!(info, "DISABLED");
     StingGuard(PhantomData)
 }
