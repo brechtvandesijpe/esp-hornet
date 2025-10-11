@@ -85,16 +85,22 @@ impl<'a> Drop for StingGuard<'a> {
     }
 }
 
+impl<'a> StingGuard<'a> {
+    pub fn start_sniff(&mut self) {
+        let _ = self.interfaces.sniffer.set_promiscuous_mode(true);
+    }
+}
+
 #[cfg(feature = "sting")]
 pub fn init_sting<'a>(
     mut wifi_controller: wifi::WifiController<'a>,
     mut interfaces: wifi::Interfaces<'a>,
 ) -> StingGuard<'a> {
-    println!("sting: enabled");
+    crate::logger::println!("Sting: ENABLED");
     wifi_controller.set_mode(wifi::WifiMode::Sta).unwrap();
     wifi_controller.start().unwrap();
 
-    interfaces.sniffer.set_promiscuous_mode(true).unwrap();
+    // interfaces.sniffer.set_promiscuous_mode(true).unwrap();
     // non-capturing closure coerces to fn pointer; it doesn't capture local state
     interfaces.sniffer.set_receive_cb(|packet| {
         let _ = match_frames! {

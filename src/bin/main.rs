@@ -10,17 +10,9 @@
 
 extern crate alloc;
 
-use alloc::{
-    collections::btree_set::BTreeSet,
-    string::{String, ToString},
-};
-use core::cell::RefCell;
-
-use critical_section::Mutex;
 use esp_backtrace as _;
 use esp_hal::{clock::CpuClock, main, rng::Rng, timer::timg::TimerGroup};
-use esp_println::println;
-use esp_wifi::{init, wifi};
+use esp_wifi::init;
 
 
 esp_bootloader_esp_idf::esp_app_desc!();
@@ -39,9 +31,9 @@ fn main() -> ! {
 
     let timg0 = TimerGroup::new(peripherals.TIMG0);
     let esp_wifi_ctrl = init(timg0.timer0, Rng::new(peripherals.RNG)).unwrap();
-    let (mut wifi_controller, mut interfaces) = esp_wifi::wifi::new(&esp_wifi_ctrl, peripherals.WIFI).unwrap();
+    let (wifi_controller, interfaces) = esp_wifi::wifi::new(&esp_wifi_ctrl, peripherals.WIFI).unwrap();
 
-    let _sting_guard = sting::init_sting(wifi_controller, interfaces);
+    let mut sting_guard = sting::init_sting(wifi_controller, interfaces);
 
     loop {}
 }
